@@ -28,6 +28,50 @@
   const celebrationBestValue = document.getElementById('celebrationBestValue');
   const newWorkoutBtn = document.getElementById('newWorkoutBtn');
 
+  // Challenge DOM refs
+  const challengeFriendBtn = document.getElementById('challengeFriendBtn');
+  const namePromptOverlay = document.getElementById('namePromptOverlay');
+  const challengerNameInput = document.getElementById('challengerNameInput');
+  const startChallengeBtn = document.getElementById('startChallengeBtn');
+  const challengeIntroOverlay = document.getElementById('challengeIntroOverlay');
+  const challengeIntroTitle = document.getElementById('challengeIntroTitle');
+  const challengeIntroText = document.getElementById('challengeIntroText');
+  const friendNameInput = document.getElementById('friendNameInput');
+  const acceptChallengeBtn = document.getElementById('acceptChallengeBtn');
+  const shareOverlay = document.getElementById('shareOverlay');
+  const shareScoreText = document.getElementById('shareScoreText');
+  const shareBadRepsSection = document.getElementById('shareBadRepsSection');
+  const shareBadRepsGrid = document.getElementById('shareBadRepsGrid');
+  const challengeLink = document.getElementById('challengeLink');
+  const copyLinkBtn = document.getElementById('copyLinkBtn');
+  const shareDoneBtn = document.getElementById('shareDoneBtn');
+  const resultOverlay = document.getElementById('resultOverlay');
+  const resultChallengerName = document.getElementById('resultChallengerName');
+  const resultChallengerScore = document.getElementById('resultChallengerScore');
+  const resultChallengerBadReps = document.getElementById('resultChallengerBadReps');
+  const resultMyName = document.getElementById('resultMyName');
+  const resultMyScore = document.getElementById('resultMyScore');
+  const resultMyBadReps = document.getElementById('resultMyBadReps');
+  const winnerDisplay = document.getElementById('winnerDisplay');
+  const winnerText = document.getElementById('winnerText');
+  const resultBadRepsSection = document.getElementById('resultBadRepsSection');
+  const resultBadRepsGrid = document.getElementById('resultBadRepsGrid');
+  const suddenDeathSection = document.getElementById('suddenDeathSection');
+  const suddenDeathBtn = document.getElementById('suddenDeathBtn');
+  const resultShareBtn = document.getElementById('resultShareBtn');
+  const resultDoneBtn = document.getElementById('resultDoneBtn');
+  const finishChallengeBtn = document.getElementById('finishChallengeBtn');
+
+  // Challenge state
+  let challengeMode = false;
+  let isChallenger = false;
+  let playerName = '';
+  let challengerName = '';
+  let challengerScore = 0;
+  let challengerBadReps = 0;
+  let challengeBadRepCount = 0;
+  let challengeFinished = false;
+
   let repCount = 0;
   let leftGripping = false;
   let rightGripping = false;
@@ -46,8 +90,10 @@
   const COOLDOWN_MS        = 600;
   const PROXIMITY_THRESH      = 0.22;
   const PARTIAL_REP_THRESHOLD = 90;
-  const ELBOW_XY_TOL = 0.30;
-  const ELBOW_Z_TOL  = 0.50;
+  const MAX_SWING_ANGLE = 35;
+  const ELBOW_Z_THRESHOLD = 0.25;
+  const GRACE_FRAMES = 5;
+  const DEPTH_BUFFER_SIZE = 5;
 
   function getBestScore() {
     return parseInt(localStorage.getItem('bestScore') || '0', 10);
@@ -70,8 +116,14 @@
       downStreak:0, upStreak:0,
       lastRepTime:0,
       minAngle:180, prevAngle:0,
-      elbowRef: null,
-      maxElbowXY: 0, maxElbowZ: 0
+      peakSwing: 0,
+      currentSwing: 0,
+      maxDepthDiff: 0,
+      currentDepthDiff: 0,
+      avgDepthDiff: 0,
+      depthBuffer: [],
+      badFrameStreak: 0,
+      maxBadStreak: 0
     };
   }
 
@@ -228,9 +280,11 @@
     const s = landmarks[arm.shoulder];
     const e = landmarks[arm.elbow];
     const w = landmarks[arm.wrist];
+    const h = landmarks[arm.hip];
 
     if (!s || !e || !w || s.visibility < 0.5 || e.visibility < 0.5 || w.visibility < 0.5) {
       armState.angle = 0;
+      armState.currentSwing = 0;
       armState.downStreak = 0;
       armState.upStreak = 0;
       return;
@@ -238,13 +292,25 @@
 
     const angle = angleBetween(s, e, w);
     armState.angle = angle;
-    const now = performance.now();
 
-    if (!armState.elbowRef) {
-      armState.elbowRef = { x: e.x, y: e.y, z: e.z };
-      armState.maxElbowXY = 0;
-      armState.maxElbowZ = 0;
+    if (h && h.visibility >= 0.5) {
+      armState.currentSwing = angleBetween(h, s, e);
+    } else {
+      armState.currentSwing = 0;
     }
+
+    armState.currentDepthDiff = s.z - e.z;
+    armState.depthBuffer.push(armState.currentDepthDiff);
+    if (armState.depthBuffer.length > DEPTH_BUFFER_SIZE) {
+      armState.depthBuffer.shift();
+    }
+    var sum = 0;
+    for (var i = 0; i < armState.depthBuffer.length; i++) {
+      sum += armState.depthBuffer[i];
+    }
+    armState.avgDepthDiff = sum / armState.depthBuffer.length;
+
+    const now = performance.now();
 
     if (!isGripping(side)) {
       armState.downStreak = 0;
@@ -272,8 +338,11 @@
         let isPerfect = false;
 
         if (armState.state === 'up_complete') {
-          const elbowStable = armState.maxElbowXY < ELBOW_XY_TOL && armState.maxElbowZ < ELBOW_Z_TOL;
-          if (elbowStable) {
+          var exceededSwing = armState.peakSwing > MAX_SWING_ANGLE;
+          var exceededDepth = armState.maxDepthDiff > ELBOW_Z_THRESHOLD;
+          var sustainedBad = armState.maxBadStreak >= GRACE_FRAMES;
+          var elbowBad = sustainedBad && (exceededSwing || exceededDepth);
+          if (!elbowBad) {
             armState.perfectCount++;
             isPerfect = true;
           } else {
@@ -289,15 +358,18 @@
         }
 
         if (counted) {
-          if (!isPerfect) {
-            html2canvas(videoWrapper, { useCORS: true, scale: 0.5 }).then(function(c) {
-              wrongRepScreenshots.push(c.toDataURL());
-            });
-          }
-          armState.totalCount++;
-          armState.lastRepTime = now;
+          var isBadInChallenge = workoutMode === 'challenge' && !isPerfect;
 
-          repCount = arms.right.totalCount + arms.left.totalCount;
+          if (!isBadInChallenge) {
+            armState.totalCount++;
+            armState.lastRepTime = now;
+          }
+
+          if (workoutMode === 'challenge') {
+            repCount = arms.right.perfectCount + arms.left.perfectCount;
+          } else {
+            repCount = arms.right.totalCount + arms.left.totalCount;
+          }
           countDisplay.textContent = repCount;
           perfectDisplay.textContent = arms.right.perfectCount + arms.left.perfectCount;
           partialDisplay.textContent = arms.right.partialCount + arms.left.partialCount;
@@ -314,41 +386,58 @@
             flashLight(lightRed, 'active-red');
             flashBorderRed();
             playSound(220, 0.2, 'sawtooth');
-            if (armState.state === 'up_partial') {
+            if (isBadInChallenge) {
+              feedback.textContent = 'Bad rep - keep form!';
+            } else if (armState.state === 'up_partial') {
               feedback.textContent = 'Partial rep - fix form!';
             } else if (armState.state === 'up_complete') {
-              feedback.textContent = 'Elbow moved - keep it fixed!';
+              feedback.textContent = 'Elbow swung - keep it fixed!';
             } else {
               feedback.textContent = 'Partial rep - full range!';
             }
             feedback.className = 'feedback curl';
           }
 
-          setTimeout(() => {
+          setTimeout(function() {
             if (!goalReached && (feedback.classList.contains('good') || feedback.classList.contains('curl'))) {
-              feedback.textContent = 'Keep going!';
+              feedback.textContent = workoutMode === 'challenge' && !challengeFinished ? 'Keep going! Press Finish when done.' : 'Keep going!';
               feedback.className = 'feedback neutral';
             }
           }, 600);
         }
 
-        armState.elbowRef = { x: e.x, y: e.y, z: e.z };
-        armState.maxElbowXY = 0;
-        armState.maxElbowZ = 0;
-
+        armState.peakSwing = 0;
+        armState.maxDepthDiff = 0;
+        armState.badFrameStreak = 0;
+        armState.maxBadStreak = 0;
+        armState.depthBuffer = [];
+        armState.avgDepthDiff = 0;
         armState.state = 'down';
         armState.downStreak = 0;
         armState.minAngle = 180;
       }
-    } else if (isCurled) {
-      if (armState.elbowRef) {
-        const dx = e.x - armState.elbowRef.x;
-        const dy = e.y - armState.elbowRef.y;
-        const xyDist = Math.sqrt(dx*dx + dy*dy);
-        if (xyDist > armState.maxElbowXY) armState.maxElbowXY = xyDist;
-        const dz = Math.abs(e.z - armState.elbowRef.z);
-        if (dz > armState.maxElbowZ) armState.maxElbowZ = dz;
-      }
+      } else if (isCurled) {
+        if (armState.currentSwing > armState.peakSwing) {
+          armState.peakSwing = armState.currentSwing;
+        }
+        if (armState.avgDepthDiff > armState.maxDepthDiff) {
+          armState.maxDepthDiff = armState.avgDepthDiff;
+        }
+
+        var frameBad = armState.currentSwing > MAX_SWING_ANGLE || armState.avgDepthDiff > ELBOW_Z_THRESHOLD;
+        if (frameBad) {
+          armState.badFrameStreak++;
+          if (armState.badFrameStreak == GRACE_FRAMES) {
+            html2canvas(videoWrapper, { useCORS: true, scale: 0.5 }).then(function(c) {
+              wrongRepScreenshots.push(c.toDataURL());
+            });
+          }
+        } else {
+          armState.badFrameStreak = 0;
+        }
+        if (armState.badFrameStreak > armState.maxBadStreak) {
+          armState.maxBadStreak = armState.badFrameStreak;
+        }
 
       armState.upStreak = Math.min(armState.upStreak + 1, CONFIRM_FRAMES + 1);
       armState.downStreak = 0;
@@ -364,17 +453,33 @@
           feedback.textContent = 'Bring wrist to shoulder!';
           feedback.className = 'feedback curl';
           playSound(220, 0.2, 'sawtooth');
+          html2canvas(videoWrapper, { useCORS: true, scale: 0.5 }).then(function(c) {
+            wrongRepScreenshots.push(c.toDataURL());
+          });
         }
         armState.upStreak = 0;
       }
     } else {
-      if (armState.elbowRef) {
-        const dx = e.x - armState.elbowRef.x;
-        const dy = e.y - armState.elbowRef.y;
-        const xyDist = Math.sqrt(dx*dx + dy*dy);
-        if (xyDist > armState.maxElbowXY) armState.maxElbowXY = xyDist;
-        const dz = Math.abs(e.z - armState.elbowRef.z);
-        if (dz > armState.maxElbowZ) armState.maxElbowZ = dz;
+      if (armState.currentSwing > armState.peakSwing) {
+        armState.peakSwing = armState.currentSwing;
+      }
+      if (armState.avgDepthDiff > armState.maxDepthDiff) {
+        armState.maxDepthDiff = armState.avgDepthDiff;
+      }
+
+      var frameBad = armState.currentSwing > MAX_SWING_ANGLE || armState.avgDepthDiff > ELBOW_Z_THRESHOLD;
+      if (frameBad) {
+        armState.badFrameStreak++;
+        if (armState.badFrameStreak == GRACE_FRAMES) {
+          html2canvas(videoWrapper, { useCORS: true, scale: 0.5 }).then(function(c) {
+            wrongRepScreenshots.push(c.toDataURL());
+          });
+        }
+      } else {
+        armState.badFrameStreak = 0;
+      }
+      if (armState.badFrameStreak > armState.maxBadStreak) {
+        armState.maxBadStreak = armState.badFrameStreak;
       }
       armState.downStreak = 0;
       armState.upStreak = 0;
@@ -431,12 +536,25 @@
       }
 
       const st = cfg.side === RIGHT ? arms.right : arms.left;
-      if (st.elbowRef) {
-        ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.font = '11px monospace';
-        ctx.textAlign = 'left';
-        const label = cfg.side === RIGHT ? 'R' : 'L';
-        ctx.fillText(label + ' XY:' + st.maxElbowXY.toFixed(3) + ' Z:' + st.maxElbowZ.toFixed(3), 8, ch - (cfg.side === RIGHT ? 36 : 18));
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      const label = cfg.side === RIGHT ? 'R' : 'L';
+      ctx.fillText(label + ' swing:' + Math.round(st.currentSwing) + '\u00B0 peak:' + Math.round(st.peakSwing) + '\u00B0 depth:' + st.avgDepthDiff.toFixed(3), 8, ch - (cfg.side === RIGHT ? 36 : 18));
+
+      var frameBad = st.currentSwing > MAX_SWING_ANGLE || st.avgDepthDiff > ELBOW_Z_THRESHOLD;
+      if (frameBad) {
+        if (st.badFrameStreak >= GRACE_FRAMES) {
+          ctx.fillStyle = '#e94560';
+          ctx.font = 'bold 22px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('STABILIZE ELBOW!', cw / 2, 30);
+        } else {
+          ctx.fillStyle = '#ffd93d';
+          ctx.font = 'bold 20px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('STABILIZE ELBOW!', cw / 2, 30);
+        }
       }
     }
   }
@@ -590,6 +708,223 @@
     });
   }
 
+  // ===== CHALLENGE FUNCTIONS =====
+  function parseChallengeParams() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.has('challenge')) {
+      challengerScore = parseInt(params.get('challenge'), 10) || 0;
+      challengerName = params.get('name') || 'A friend';
+      challengerBadReps = parseInt(params.get('badReps'), 10) || 0;
+      return true;
+    }
+    return false;
+  }
+
+  function hideAllChallengeOverlays() {
+    namePromptOverlay.style.display = 'none';
+    challengeIntroOverlay.style.display = 'none';
+    shareOverlay.style.display = 'none';
+    resultOverlay.style.display = 'none';
+  }
+
+  function showChallengeIntro() {
+    modalOverlay.style.display = 'none';
+    challengeIntroOverlay.style.display = 'flex';
+    challengeIntroTitle.textContent = challengerName + ' challenged you!';
+    var badRepText = challengerBadReps > 0 ? ' (' + challengerBadReps + ' bad reps)' : '';
+    challengeIntroText.textContent = 'Score to beat: ' + challengerScore + ' perfect reps' + badRepText + '! Can you do it? 💪';
+    friendNameInput.value = '';
+    friendNameInput.focus();
+  }
+
+  function startChallengerFlow() {
+    challengeMode = true;
+    isChallenger = true;
+    workoutMode = 'challenge';
+    wrongRepScreenshots = [];
+    challengeBadRepCount = 0;
+    challengeFinished = false;
+    hideAllChallengeOverlays();
+    modalOverlay.style.display = 'none';
+    finishChallengeBtn.style.display = '';
+    fb('Go till failure, then press Finish!', 'neutral');
+    startCamera();
+  }
+
+  function startFriendFlow(name) {
+    challengeMode = true;
+    isChallenger = false;
+    playerName = name;
+    workoutMode = 'challenge';
+    wrongRepScreenshots = [];
+    challengeBadRepCount = 0;
+    challengeFinished = false;
+    hideAllChallengeOverlays();
+    finishChallengeBtn.style.display = '';
+    fb('Beat ' + challengerScore + ' reps, then press Finish!', 'neutral');
+    startCamera();
+  }
+
+  function fb(msg, cls) {
+    feedback.textContent = msg;
+    feedback.className = 'feedback ' + cls;
+  }
+
+  function finishChallenge() {
+    if (challengeFinished) return;
+    challengeFinished = true;
+    stopCamera();
+    finishChallengeBtn.style.display = 'none';
+
+    var perfectScore = arms.right.perfectCount + arms.left.perfectCount;
+    challengeBadRepCount = arms.right.partialCount + arms.left.partialCount;
+
+    if (isChallenger) {
+      showShareScreen(perfectScore);
+    } else {
+      showResultScreen(perfectScore);
+    }
+  }
+
+  function showShareScreen(score) {
+    shareOverlay.style.display = 'flex';
+    shareScoreText.textContent = 'You did ' + score + ' perfect reps' + (challengeBadRepCount > 0 ? ' (' + challengeBadRepCount + ' bad reps)' : '') + '!';
+
+    var base = window.location.origin + window.location.pathname;
+    var link = base + '?challenge=' + score + '&name=' + encodeURIComponent(playerName || 'Me') + '&badReps=' + challengeBadRepCount;
+    challengeLink.value = link;
+
+    if (wrongRepScreenshots.length > 0) {
+      shareBadRepsSection.style.display = '';
+      shareBadRepsGrid.innerHTML = '';
+      for (var i = 0; i < wrongRepScreenshots.length; i++) {
+        var img = document.createElement('img');
+        img.src = wrongRepScreenshots[i];
+        img.alt = 'Bad rep';
+        shareBadRepsGrid.appendChild(img);
+      }
+    } else {
+      shareBadRepsSection.style.display = 'none';
+    }
+  }
+
+  function showResultScreen(myScore) {
+    resultOverlay.style.display = 'flex';
+
+    resultChallengerName.textContent = challengerName;
+    resultChallengerScore.textContent = challengerScore;
+    resultChallengerBadReps.textContent = challengerBadReps > 0 ? challengerBadReps + ' bad reps' : '';
+
+    resultMyName.textContent = playerName;
+    resultMyScore.textContent = myScore;
+    resultMyBadReps.textContent = challengeBadRepCount > 0 ? challengeBadRepCount + ' bad reps' : '';
+
+    if (wrongRepScreenshots.length > 0) {
+      resultBadRepsSection.style.display = '';
+      resultBadRepsGrid.innerHTML = '';
+      for (var i = 0; i < wrongRepScreenshots.length; i++) {
+        var img = document.createElement('img');
+        img.src = wrongRepScreenshots[i];
+        img.alt = 'Bad rep';
+        resultBadRepsGrid.appendChild(img);
+      }
+    } else {
+      resultBadRepsSection.style.display = 'none';
+    }
+
+    if (myScore > challengerScore) {
+      winnerDisplay.style.display = '';
+      winnerText.textContent = playerName + ' wins! 🏆';
+      suddenDeathSection.style.display = 'none';
+    } else if (myScore < challengerScore) {
+      winnerDisplay.style.display = '';
+      winnerText.textContent = challengerName + ' wins! 🏆';
+      suddenDeathSection.style.display = 'none';
+    } else {
+      winnerDisplay.style.display = 'none';
+      suddenDeathSection.style.display = '';
+    }
+  }
+
+  function startSuddenDeath() {
+    hideAllChallengeOverlays();
+    wrongRepScreenshots = [];
+    challengeBadRepCount = 0;
+    challengeFinished = false;
+
+    arms.right = createArmState();
+    arms.left = createArmState();
+    repCount = 0;
+    countDisplay.textContent = '0';
+    perfectDisplay.textContent = '0';
+    partialDisplay.textContent = '0';
+    goalProgress.hidden = true;
+    rightAngleEl.textContent = '--';
+    rightAngleEl.className = 'value neutral';
+    leftAngleEl.textContent = '--';
+    leftAngleEl.className = 'value neutral';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    finishChallengeBtn.style.display = '';
+    fb('Sudden death! Beat ' + challengerScore + '! 💀', 'neutral');
+    startCamera();
+  }
+
+  function copyText(text, btn) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() {
+        var orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+      }).catch(function() {});
+    } else {
+      challengeLink.select();
+      document.execCommand('copy');
+    }
+  }
+
+  function cleanupChallenge() {
+    challengeMode = false;
+    isChallenger = false;
+    playerName = '';
+    challengerName = '';
+    challengerScore = 0;
+    challengerBadReps = 0;
+    challengeBadRepCount = 0;
+    challengeFinished = false;
+    wrongRepScreenshots = [];
+    hideAllChallengeOverlays();
+
+    arms.right = createArmState();
+    arms.left = createArmState();
+    repCount = 0;
+    countDisplay.textContent = '0';
+    perfectDisplay.textContent = '0';
+    partialDisplay.textContent = '0';
+    goalProgress.hidden = true;
+    goalProgress.style.color = '#4ecca3';
+    rightAngleEl.textContent = '--';
+    rightAngleEl.className = 'value neutral';
+    leftAngleEl.textContent = '--';
+    leftAngleEl.className = 'value neutral';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    setGoalBtn.style.display = '';
+    goFailureBtn.style.display = '';
+    challengeFriendBtn.style.display = '';
+    goalInputWrapper.hidden = true;
+    goalInput.value = '10';
+    modalOverlay.style.display = '';
+
+    if (window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    fb('Loading camera...', 'neutral');
+  }
+
+  // ===== EVENT LISTENERS =====
+
   setGoalBtn.addEventListener('click', function() {
     setGoalBtn.style.display = 'none';
     goFailureBtn.style.display = 'none';
@@ -657,6 +992,9 @@
       goalProgress.style.color = '#4ecca3';
       goalProgress.textContent = '0 / ' + goalReps;
     }
+    if (workoutMode === 'challenge') {
+      challengeBadRepCount = 0;
+    }
     countDisplay.textContent = '0';
     perfectDisplay.textContent = '0';
     partialDisplay.textContent = '0';
@@ -668,5 +1006,74 @@
     feedback.className = 'feedback neutral';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   });
+
+  // ===== CHALLENGE EVENT LISTENERS =====
+
+  challengeFriendBtn.addEventListener('click', function() {
+    modalOverlay.style.display = 'none';
+    namePromptOverlay.style.display = 'flex';
+    challengerNameInput.value = '';
+    challengerNameInput.focus();
+  });
+
+  startChallengeBtn.addEventListener('click', function() {
+    var name = challengerNameInput.value.trim();
+    if (!name) {
+      challengerNameInput.style.borderColor = '#e94560';
+      return;
+    }
+    challengerNameInput.style.borderColor = '';
+    playerName = name;
+    startChallengerFlow();
+  });
+
+  challengerNameInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') startChallengeBtn.click();
+  });
+
+  acceptChallengeBtn.addEventListener('click', function() {
+    var name = friendNameInput.value.trim();
+    if (!name) {
+      friendNameInput.style.borderColor = '#e94560';
+      return;
+    }
+    friendNameInput.style.borderColor = '';
+    startFriendFlow(name);
+  });
+
+  friendNameInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') acceptChallengeBtn.click();
+  });
+
+  finishChallengeBtn.addEventListener('click', finishChallenge);
+
+  copyLinkBtn.addEventListener('click', function() {
+    copyText(challengeLink.value, copyLinkBtn);
+  });
+
+  shareDoneBtn.addEventListener('click', cleanupChallenge);
+
+  suddenDeathBtn.addEventListener('click', startSuddenDeath);
+
+  resultShareBtn.addEventListener('click', function() {
+    var cName = resultChallengerName.textContent;
+    var cScore = resultChallengerScore.textContent;
+    var cBad = resultChallengerBadReps.textContent;
+    var mName = resultMyName.textContent;
+    var mScore = resultMyScore.textContent;
+    var mBad = resultMyBadReps.textContent;
+    var wText = winnerDisplay.style.display !== 'none' ? winnerText.textContent : 'It\'s a tie!';
+    var resultText = '🏋️ Bicep Curl Challenge Result!\n' + cName + ': ' + cScore + ' perfect reps' + (cBad ? ' (' + cBad + ')' : '') + '\n' + mName + ': ' + mScore + ' perfect reps' + (mBad ? ' (' + mBad + ')' : '') + '\n' + wText;
+    copyText(resultText, resultShareBtn);
+  });
+
+  resultDoneBtn.addEventListener('click', cleanupChallenge);
+
+  // ===== URL PARAMS CHECK =====
+  if (parseChallengeParams()) {
+    challengeMode = true;
+    isChallenger = false;
+    showChallengeIntro();
+  }
 
 })();

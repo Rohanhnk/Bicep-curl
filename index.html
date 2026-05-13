@@ -15,6 +15,7 @@
     <div class="modal-buttons">
       <button class="modal-btn" id="setGoalBtn">Set a Goal</button>
       <button class="modal-btn" id="goFailureBtn">Go Till Failure</button>
+      <button class="modal-btn" id="challengeFriendBtn" style="border-color:#ffd93d;color:#ffd93d">Challenge a Friend</button>
     </div>
     <div class="goal-input-wrapper" id="goalInputWrapper" hidden>
       <p class="goal-label">How many reps?</p>
@@ -62,6 +63,7 @@
 
     <div class="feedback neutral" id="feedback">Loading camera...</div>
     <button id="resetBtn">Reset</button>
+    <button id="finishChallengeBtn" style="display:none">Finish Reps</button>
   </div>
 </div>
 
@@ -90,6 +92,78 @@
       <div class="review-grid" id="reviewGrid"></div>
     </div>
     <button class="modal-btn" id="newWorkoutBtn">Set New Goal</button>
+  </div>
+</div>
+
+<div class="overlay-screen" id="namePromptOverlay" style="display:none">
+  <div class="overlay-panel">
+    <h2>Challenge a Friend</h2>
+    <p class="overlay-sub">What's your name?</p>
+    <input type="text" id="challengerNameInput" maxlength="20" placeholder="Enter your name">
+    <button class="modal-btn start-btn" id="startChallengeBtn">Start Challenge</button>
+  </div>
+</div>
+
+<div class="overlay-screen" id="challengeIntroOverlay" style="display:none">
+  <div class="overlay-panel">
+    <div class="challenge-badge">🏋️</div>
+    <h2 id="challengeIntroTitle">You've been challenged!</h2>
+    <p class="overlay-sub" id="challengeIntroText">Beat 15 reps!</p>
+    <p class="overlay-sub" style="margin-bottom:8px">Enter your name to accept:</p>
+    <input type="text" id="friendNameInput" maxlength="20" placeholder="Your name">
+    <button class="modal-btn start-btn" id="acceptChallengeBtn">Accept Challenge</button>
+  </div>
+</div>
+
+<div class="overlay-screen" id="shareOverlay" style="display:none">
+  <div class="overlay-panel">
+    <h2>Challenge Complete!</h2>
+    <p class="overlay-sub" id="shareScoreText">Great work!</p>
+    <div id="shareBadRepsSection" style="display:none">
+      <p class="bad-reps-label">Your bad reps:</p>
+      <div class="review-grid" id="shareBadRepsGrid"></div>
+    </div>
+    <p class="overlay-sub" style="margin-bottom:8px">Share this link with your friend:</p>
+    <div class="share-link-row">
+      <input type="text" id="challengeLink" readonly>
+      <button id="copyLinkBtn">Copy</button>
+    </div>
+    <button class="modal-btn" id="shareDoneBtn">Done</button>
+  </div>
+</div>
+
+<div class="overlay-screen" id="resultOverlay" style="display:none">
+  <div class="overlay-panel">
+    <h2>Challenge Result</h2>
+    <div class="score-comparison">
+      <div class="score-card">
+        <span class="score-name" id="resultChallengerName">Opponent</span>
+        <span class="score-value" id="resultChallengerScore" style="color:#82aaff">0</span>
+        <span class="score-bad-reps" id="resultChallengerBadReps"></span>
+      </div>
+      <div class="vs-divider">VS</div>
+      <div class="score-card">
+        <span class="score-name" id="resultMyName">You</span>
+        <span class="score-value" id="resultMyScore" style="color:#4ecca3">0</span>
+        <span class="score-bad-reps" id="resultMyBadReps"></span>
+      </div>
+    </div>
+    <div class="winner-display" id="winnerDisplay" style="display:none">
+      <span id="winnerText"></span>
+    </div>
+    <div id="resultBadRepsSection" style="display:none">
+      <p class="bad-reps-label">Your bad reps:</p>
+      <div class="review-grid" id="resultBadRepsGrid"></div>
+    </div>
+    <div id="suddenDeathSection" style="display:none">
+      <p class="sudden-death-text">It's a tie! Sudden death needed!</p>
+      <p class="overlay-sub">Do one more set to break the tie!</p>
+      <button class="modal-btn start-btn" id="suddenDeathBtn">Go Again</button>
+    </div>
+    <div class="result-btn-row">
+      <button class="modal-btn" id="resultShareBtn" style="border-color:#82aaff;color:#82aaff">Copy Result</button>
+      <button class="modal-btn" id="resultDoneBtn">New Workout</button>
+    </div>
   </div>
 </div>
 
