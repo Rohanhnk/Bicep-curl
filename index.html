@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Bicep Curl Counter</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2>Ready to work out?</h2>
+    <p class="modal-question">Set a goal or go till failure?</p>
+    <div class="modal-buttons">
+      <button class="modal-btn" id="setGoalBtn">Set a Goal</button>
+      <button class="modal-btn" id="goFailureBtn">Go Till Failure</button>
+    </div>
+    <div class="goal-input-wrapper" id="goalInputWrapper" hidden>
+      <p class="goal-label">How many reps?</p>
+      <div class="goal-input-row">
+        <input type="number" id="goalInput" min="1" max="999" value="10" class="goal-input">
+        <button class="modal-btn start-btn" id="startGoalBtn">Start</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="video-wrapper">
+    <video id="video" playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div class="overlay">
+      <div class="status-lights">
+        <div id="lightGreen" class="light-bulb"></div>
+        <div id="lightRed" class="light-bulb"></div>
+      </div>
+      <div class="counter-box">
+        <div class="label">Curls</div>
+        <div class="count" id="countDisplay">0</div>
+        <div class="goal-progress" id="goalProgress" hidden></div>
+      </div>
+      <div class="info-box">
+        <div class="info-item">
+          Right <span class="value neutral" id="rightAngle">--</span>
+        </div>
+        <div class="info-item">
+          Left <span class="value neutral" id="leftAngle">--</span>
+        </div>
+        <div class="info-item">
+          Perfect <span class="value good" id="perfectCount">0</span>
+        </div>
+        <div class="info-item">
+          Partial <span class="value curl" id="partialCount">0</span>
+        </div>
+        <div class="info-item" id="bestScoreDisplay" style="display:none">
+          Best <span class="value neutral" id="bestScoreValue">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="feedback neutral" id="feedback">Loading camera...</div>
+    <button id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<div class="celebration-overlay" id="celebrationOverlay" style="display:none">
+  <div class="confetti-container" id="confettiContainer"></div>
+  <div class="celebration-modal">
+    <div class="trophy">🏆</div>
+    <h2>Congratulations!</h2>
+    <p class="celebration-sub">You crushed your goal!</p>
+    <div class="celebration-stats">
+      <div class="stat">
+        <span class="stat-label">Goal</span>
+        <span class="stat-value" id="celebrationGoal">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Completed</span>
+        <span class="stat-value" id="celebrationCompleted">0</span>
+      </div>
+    </div>
+    <div class="personal-best" id="celebrationBest">
+      <span class="pb-label">Personal Best</span>
+      <span class="pb-value" id="celebrationBestValue">0</span>
+    </div>
+    <div class="review-section" id="reviewSection" style="display:none">
+      <div class="review-label">Review your partial reps</div>
+      <div class="review-grid" id="reviewGrid"></div>
+    </div>
+    <button class="modal-btn" id="newWorkoutBtn">Set New Goal</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
