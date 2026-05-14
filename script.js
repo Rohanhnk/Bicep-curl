@@ -507,15 +507,15 @@
       ctx.beginPath();
       ctx.strokeStyle = color;
       ctx.lineWidth = lw;
-      ctx.moveTo(s.x * cw, s.y * ch);
-      ctx.lineTo(e.x * cw, e.y * ch);
+      ctx.moveTo((1 - s.x) * cw, s.y * ch);
+      ctx.lineTo((1 - e.x) * cw, e.y * ch);
       ctx.stroke();
 
       ctx.beginPath();
       ctx.strokeStyle = color;
       ctx.lineWidth = lw;
-      ctx.moveTo(e.x * cw, e.y * ch);
-      ctx.lineTo(wr.x * cw, wr.y * ch);
+      ctx.moveTo((1 - e.x) * cw, e.y * ch);
+      ctx.lineTo((1 - wr.x) * cw, wr.y * ch);
       ctx.stroke();
 
       for (const [pidx, p] of [[cfg.shoulder, s], [cfg.elbow, e], [cfg.wrist, wr]]) {
@@ -523,7 +523,7 @@
         const dotColor = isElbow ? '#ffd93d' : (gripping ? '#4ecca3' : '#e94560');
         ctx.beginPath();
         ctx.fillStyle = dotColor;
-        ctx.arc(p.x * cw, p.y * ch, isElbow ? 6 : 4, 0, 2 * Math.PI);
+        ctx.arc((1 - p.x) * cw, p.y * ch, isElbow ? 6 : 4, 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -532,7 +532,7 @@
         ctx.fillStyle = '#fff';
         ctx.font = '14px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(Math.round(angle) + '\u00B0', e.x * cw, (e.y * ch) - 14);
+        ctx.fillText(Math.round(angle) + '\u00B0', (1 - e.x) * cw, (e.y * ch) - 14);
       }
 
       const st = cfg.side === RIGHT ? arms.right : arms.left;
