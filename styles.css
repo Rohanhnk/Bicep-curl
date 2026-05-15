@@ -117,7 +117,7 @@ canvas{
   background:rgba(0,0,0,.7);
   padding:8px 14px;
   border-radius:10px;
-  text-align:center;
+  text-align:left;
   font-size:.75rem;
   backdrop-filter:blur(4px)
 }
